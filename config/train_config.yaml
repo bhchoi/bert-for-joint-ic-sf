@@ -1,7 +1,7 @@
 task: ner
 log_path: logs
 bert_model: monologg/kobert
-data_path: data
+data_path: data/atis
 max_len: 16
 batch_size: 128
 dropout_rate: 0.1
