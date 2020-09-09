@@ -10,35 +10,35 @@ from seqeval.metrics import f1_score as seqeval_f1_score
 from sklearn.metrics import f1_score as sklearn_f1_score
 from itertools import chain
 
-from utils import load_slot_labels
-
 
 class NerBertModel(pl.LightningModule):
     def __init__(
         self,
-        args: argparse,
+        config: argparse,
         ner_train_dataloader: DataLoader,
         ner_val_dataloader: DataLoader,
         ner_test_dataloader: DataLoader,
     ):
         super().__init__()
-        self.args = args
+        self.config = config
         self.ner_train_dataloader = ner_train_dataloader
         self.ner_val_dataloader = ner_val_dataloader
         self.ner_test_dataloader = ner_test_dataloader
-        self.slot_labels_type = load_slot_labels()
         self.ignore_index = torch.nn.CrossEntropyLoss().ignore_index
 
         # TODO: num_labels 확인하기
-        self.config = BertConfig.from_pretrained(
-            self.args.bert_model, num_labels=len(self.slot_labels_type)
+        self.bert_config = BertConfig.from_pretrained(
+            self.config.bert_model, num_labels=len(self.config.slot_labels)
         )
 
-        self.model = BertModel.from_pretrained(self.args.bert_model)
-        self.dropout = nn.Dropout(self.args.dropout_rate)
-        self.linear = nn.Linear(self.config.hidden_size, len(load_slot_labels()))
-
-        # intent classification fc 추가하기
+        self.model = BertModel.from_pretrained(self.config.bert_model)
+        self.dropout = nn.Dropout(self.config.dropout_rate)
+        self.slot_linear = nn.Linear(
+            self.bert_config.hidden_size, len(self.config.slot_labels)
+        )
+        self.intent_linear = nn.Linear(
+            self.bert_config.hidden_size, len(self.config.intent_labels)
+        )
 
     def forward(self, input_ids, attention_mask, token_type_ids):
         outputs = self.model(
@@ -47,33 +47,39 @@ class NerBertModel(pl.LightningModule):
             token_type_ids=token_type_ids,
         )
 
-        x = outputs[0]
-        x = self.dropout(x)
-        x = self.linear(x)
+        slot_output = outputs[0]
+        slot_output = self.dropout(slot_output)
+        slot_output = self.slot_linear(slot_output)
 
-        return x
+        intent_output = outputs[1]
+        intent_output = self.dropout(intent_output)
+        intent_output = self.intent_linear(intent_output)
+
+        return slot_output, intent_output
 
     def training_step(self, batch, batch_nb):
 
-        input_ids, attention_mask, token_type_ids, slot_labels = batch
+        input_ids, attention_mask, token_type_ids, slot_labels, intent_labels = batch
 
-        outputs = self(
+        slot_output, intent_output = self(
             input_ids=input_ids,
             attention_mask=attention_mask,
             token_type_ids=token_type_ids,
         )
 
         active_loss = attention_mask.view(-1) == 1
-        active_logits = outputs.view(-1, len(self.slot_labels_type))[active_loss]
+        active_logits = slot_output.view(-1, len(self.config.slot_labels))[active_loss]
         active_labels = slot_labels.view(-1)[active_loss]
         loss = F.cross_entropy(active_logits, active_labels)
         tensorboard_logs = {"train_loss": loss}
+
+        # TODO: intent output 추가하기
 
         return {"loss": loss, "log": tensorboard_logs}
 
     def validation_step(self, batch, batch_nb):
 
-        input_ids, attention_mask, token_type_ids, slot_labels = batch
+        input_ids, attention_mask, token_type_ids, slot_labels, intent_labels = batch
 
         outputs = self(
             input_ids=input_ids,
@@ -82,7 +88,7 @@ class NerBertModel(pl.LightningModule):
         )
 
         active_loss = attention_mask.view(-1) == 1
-        active_logits = outputs.view(-1, len(self.slot_labels_type))[active_loss]
+        active_logits = outputs.view(-1, len(self.config.slot_labels))[active_loss]
         active_labels = slot_labels.view(-1)[active_loss]
         loss = F.cross_entropy(active_logits, active_labels)
 
@@ -90,7 +96,7 @@ class NerBertModel(pl.LightningModule):
         y_hat = y_hat.detach().cpu().numpy()
         slot_label_ids = slot_labels.detach().cpu().numpy()
 
-        slot_label_map = {i: label for i, label in enumerate(self.slot_labels_type)}
+        slot_label_map = {i: label for i, label in enumerate(self.config.slot_labels)}
         slot_gt_labels = [[] for _ in range(slot_label_ids.shape[0])]
         slot_pred_labels = [[] for _ in range(slot_label_ids.shape[0])]
 
@@ -128,7 +134,7 @@ class NerBertModel(pl.LightningModule):
 
     def test_step(self, batch, batch_nb):
 
-        input_ids, attention_mask, token_type_ids, slot_labels = batch
+        input_ids, attention_mask, token_type_ids, slot_labels, intent_labels = batch
 
         outputs = self(
             input_ids=input_ids,

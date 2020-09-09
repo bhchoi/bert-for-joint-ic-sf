@@ -10,7 +10,7 @@ class Preprocessor:
         self.max_len = max_len
         self.ignore_index = torch.nn.CrossEntropyLoss().ignore_index
 
-    def get_input_features(self, sentence, tags):
+    def get_input_features(self, sentence, tags, intent):
 
         """
         1. input_id
@@ -66,5 +66,6 @@ class Preprocessor:
         attention_mask = torch.tensor(attention_mask, dtype=torch.long)
         token_type_ids = torch.tensor(token_type_ids, dtype=torch.long)
         slot_labels = torch.tensor(slot_labels, dtype=torch.long)
+        intent = torch.tensor(intent, dtype=torch.long)
 
-        return input_ids, attention_mask, token_type_ids, slot_labels
+        return input_ids, attention_mask, token_type_ids, slot_labels, intent

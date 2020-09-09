@@ -4,8 +4,9 @@ from torch.utils.data import Dataset
 
 
 class JointDataset(Dataset):
-    def __init__(self, config, preprocessor):
+    def __init__(self, config, preprocessor, mode):
         self.config = config
+        self.mode = mode
         self.sentence_list = []
         self.tag_list = []
         self.intent_list = []
@@ -18,7 +19,7 @@ class JointDataset(Dataset):
         self.sentence_list = [
             line.rstrip("\n").split(" ")
             for line in open(
-                os.path.join(self.config.data_path, "seq.in"),
+                os.path.join(self.config.data_path, self.mode, "seq.in"),
                 mode="r",
                 encoding="utf-8",
             )
@@ -26,7 +27,7 @@ class JointDataset(Dataset):
         self.tag_list = [
             line.rstrip("\n").split(" ")
             for line in open(
-                os.path.join(self.config.data_path, "seq.out"),
+                os.path.join(self.config.data_path, self.mode, "seq.out"),
                 mode="r",
                 encoding="utf-8",
             )
@@ -34,7 +35,9 @@ class JointDataset(Dataset):
         self.intent_list = [
             line.rstrip("\n")
             for line in open(
-                os.path.join(self.config.data_path, "label"), mode="r", encoding="utf-8"
+                os.path.join(self.config.data_path, self.mode, "label"),
+                mode="r",
+                encoding="utf-8",
             )
         ]
 
@@ -43,7 +46,7 @@ class JointDataset(Dataset):
 
     def __getitem__(self, idx):
         sentence = self.sentence_list[idx]
-        intent = self.intent_list[idx]
+        intent = self.config.intent_labels.index(self.intent_list[idx])
         tags = [
             self.config.slot_labels.index(t)
             if t in self.config.slot_labels
@@ -51,12 +54,12 @@ class JointDataset(Dataset):
             for t in self.tag_list[idx]
         ]
 
-        # TODO: get_input_features에 intent 추가하기
         (
             input_ids,
-            slot_labels,
             attention_mask,
             token_type_ids,
-        ) = self.preprocessor.get_input_features(sentence, tags)
+            slot_labels,
+            intent,
+        ) = self.preprocessor.get_input_features(sentence, tags, intent)
 
-        return input_ids, slot_labels, attention_mask, token_type_ids
+        return input_ids, attention_mask, token_type_ids, slot_labels, intent
