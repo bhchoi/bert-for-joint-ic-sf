@@ -24,13 +24,10 @@ class NerBertModel(pl.LightningModule):
         self.ner_train_dataloader = ner_train_dataloader
         self.ner_val_dataloader = ner_val_dataloader
         self.ner_test_dataloader = ner_test_dataloader
+
         self.ignore_index = torch.nn.CrossEntropyLoss().ignore_index
 
-        # TODO: num_labels 확인하기
-        self.bert_config = BertConfig.from_pretrained(
-            self.config.bert_model, num_labels=len(self.config.slot_labels)
-        )
-
+        self.bert_config = BertConfig.from_pretrained(self.config.bert_model)
         self.model = BertModel.from_pretrained(self.config.bert_model)
         self.dropout = nn.Dropout(self.config.dropout_rate)
         self.slot_linear = nn.Linear(
@@ -70,29 +67,39 @@ class NerBertModel(pl.LightningModule):
         active_loss = attention_mask.view(-1) == 1
         active_logits = slot_output.view(-1, len(self.config.slot_labels))[active_loss]
         active_labels = slot_labels.view(-1)[active_loss]
-        loss = F.cross_entropy(active_logits, active_labels)
-        tensorboard_logs = {"train_loss": loss}
+        slot_loss = F.cross_entropy(active_logits, active_labels)
 
-        # TODO: intent output 추가하기
+        intent_loss = F.cross_entropy(
+            intent_output.view(-1, len(self.config.intent_labels)),
+            intent_labels.view(-1),
+        )
 
-        return {"loss": loss, "log": tensorboard_logs}
+        tensorboard_logs = {
+            "train_loss": slot_loss + intent_loss,
+            "train_intent_loss": intent_loss,
+            "train_slot_loss": slot_loss,
+        }
+
+        train_outputs = {"loss": slot_loss + intent_loss, "log": tensorboard_logs}
+
+        return train_outputs
 
     def validation_step(self, batch, batch_nb):
 
         input_ids, attention_mask, token_type_ids, slot_labels, intent_labels = batch
 
-        outputs = self(
+        slot_output, intent_output = self(
             input_ids=input_ids,
             attention_mask=attention_mask,
             token_type_ids=token_type_ids,
         )
 
         active_loss = attention_mask.view(-1) == 1
-        active_logits = outputs.view(-1, len(self.config.slot_labels))[active_loss]
+        active_logits = slot_output.view(-1, len(self.config.slot_labels))[active_loss]
         active_labels = slot_labels.view(-1)[active_loss]
-        loss = F.cross_entropy(active_logits, active_labels)
+        slot_loss = F.cross_entropy(active_logits, active_labels)
 
-        a, y_hat = torch.max(outputs, dim=2)
+        a, y_hat = torch.max(slot_output, dim=2)
         y_hat = y_hat.detach().cpu().numpy()
         slot_label_ids = slot_labels.detach().cpu().numpy()
 
@@ -106,28 +113,56 @@ class NerBertModel(pl.LightningModule):
                     slot_gt_labels[i].append(slot_label_map[slot_label_ids[i][j]])
                     slot_pred_labels[i].append(slot_label_map[y_hat[i][j]])
 
-        val_acc = torch.tensor(
+        val_slot_acc = torch.tensor(
             seqeval_f1_score(slot_gt_labels, slot_pred_labels), dtype=torch.float32
         )
-        token_val_acc = sklearn_f1_score(
+        token_val_slot_acc = sklearn_f1_score(
             list(chain.from_iterable(slot_gt_labels)),
             list(chain.from_iterable(slot_pred_labels)),
             average="micro",
         )
 
-        token_val_acc = torch.tensor(token_val_acc, dtype=torch.float32)
+        token_val_slot_acc = torch.tensor(token_val_slot_acc, dtype=torch.float32)
 
-        return {"val_loss": loss, "val_acc": val_acc, "token_val_acc": token_val_acc}
+        # pred_intent_labels = torch.argmax(intent_output, dim=1)
+        # print("##pred_intent_labels:", pred_intent_labels.size())
+        # print("##intent_labels:", intent_labels.size())
+        intent_loss = F.cross_entropy(
+            intent_output.view(-1, len(self.config.intent_labels)),
+            intent_labels.view(-1),
+        )
+
+        # intent_acc = (intent_labels == pred_intent_labels).mean()
+        # intent_acc = 0
+
+        validation_outputs = {
+            "val_slot_loss": slot_loss,
+            "val_intent_loss": intent_loss,
+            "val_loss": slot_loss + intent_loss,
+            "val_slot_acc": val_slot_acc,
+            "token_val_slot_acc": token_val_slot_acc,
+            # "intent_acc": intent_acc,
+        }
+
+        return validation_outputs
 
     def validation_epoch_end(self, outputs):
+        val_slot_loss = torch.stack([x["val_slot_loss"] for x in outputs]).mean()
+        val_intent_loss = torch.stack([x["val_intent_loss"] for x in outputs]).mean()
         val_loss = torch.stack([x["val_loss"] for x in outputs]).mean()
-        val_acc = torch.stack([x["val_acc"] for x in outputs]).mean()
-        token_val_acc = torch.stack([x["token_val_acc"] for x in outputs]).mean()
+        val_slot_acc = torch.stack([x["val_slot_acc"] for x in outputs]).mean()
+        token_val_slot_acc = torch.stack(
+            [x["token_val_slot_acc"] for x in outputs]
+        ).mean()
+        # intent_acc = torch.stack([x["intent_acc"] for x in outputs]).mean()
 
         tensorboard_log = {
             "val_loss": val_loss,
-            "val_acc": val_acc,
-            "token_val_acc": token_val_acc,
+            "val_slot_loss": val_slot_loss,
+            "val_intent_loss": val_intent_loss,
+            "val_slot_acc": val_slot_acc,
+            "token_val_slot_acc": token_val_slot_acc,
+            # "intent_acc": intent_acc,
         }
 
         return {"val_loss": val_loss, "progress_bar": tensorboard_log}
