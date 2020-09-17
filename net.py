@@ -140,6 +140,7 @@ class NerBertModel(pl.LightningModule):
         pred_intent_labels = pred_intent_labels.detach().cpu().numpy()
 
         intent_acc = (intent_labels == pred_intent_labels).mean()
+        intent_acc = torch.tensor(intent_acc)
 
         validation_outputs = {
             "val_slot_loss": slot_loss,
