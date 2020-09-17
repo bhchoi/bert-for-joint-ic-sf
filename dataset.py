@@ -1,6 +1,9 @@
 import os
-from preprocessor import Preprocessor
 from torch.utils.data import Dataset
+
+from preprocessor import Preprocessor
+from utils import get_intent_labels
+from utils import get_slot_labels
 
 
 class JointDataset(Dataset):
@@ -11,6 +14,8 @@ class JointDataset(Dataset):
         self.tag_list = []
         self.intent_list = []
         self.preprocessor = preprocessor
+        self.intent_labels = get_intent_labels(self.config.data_path)
+        self.slot_labels = get_slot_labels(self.config.data_path)
 
         self.load_data()
 
@@ -46,20 +51,19 @@ class JointDataset(Dataset):
 
     def __getitem__(self, idx):
         sentence = self.sentence_list[idx]
-        intent = self.config.intent_labels.index(self.intent_list[idx])
+
+        intent = self.intent_list[idx]
+
+        try:
+            intent_id = self.intent_labels.index(intent)
+        except ValueError:
+            intent_id = 0
+
         tags = [
-            self.config.slot_labels.index(t)
-            if t in self.config.slot_labels
+            self.slot_labels.index(t)
+            if t in self.slot_labels
             else self.preprocessor.tokenizer.unk_token
             for t in self.tag_list[idx]
         ]
 
-        (
-            input_ids,
-            attention_mask,
-            token_type_ids,
-            slot_labels,
-            intent,
-        ) = self.preprocessor.get_input_features(sentence, tags, intent)
-
-        return input_ids, attention_mask, token_type_ids, slot_labels, intent
+        return self.preprocessor.get_input_features(sentence, tags, intent_id)
