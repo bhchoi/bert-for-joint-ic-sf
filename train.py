@@ -16,14 +16,10 @@ def get_dataloader(config, preprocessor):
 
     train_sampler = RandomSampler(train_dataset)
     train_dataloader = DataLoader(
-        train_dataset, batch_size=config.batch_size, sampler=train_sampler
+        train_dataset, batch_size=config.train_batch_size, sampler=train_sampler
     )
-    val_dataloader = DataLoader(
-        val_dataset, batch_size=config.batch_size, drop_last=True
-    )
-    test_dataloader = DataLoader(
-        test_dataset, batch_size=config.batch_size, drop_last=True
-    )
+    val_dataloader = DataLoader(val_dataset, batch_size=config.eval_batch_size)
+    test_dataloader = DataLoader(test_dataset, batch_size=config.eval_batch_size)
 
     return train_dataloader, val_dataloader, test_dataloader
 
@@ -60,7 +56,7 @@ def main(config):
 
     trainer = pl.Trainer(
         gpus=config.gpus,
-        # distributed_backend="",
+        distributed_backend=config.distributed_backend,
         checkpoint_callback=checkpoint_callback,
         early_stop_callback=early_stop_callback,
         logger=logger,
