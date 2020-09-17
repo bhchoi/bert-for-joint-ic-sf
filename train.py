@@ -1,44 +1,12 @@
-import os
-from omegaconf import OmegaConf
 import pytorch_lightning as pl
+from omegaconf import OmegaConf
 from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
 from torch.utils.data import DataLoader, RandomSampler
-from itertools import chain
 
 from preprocessor import Preprocessor
 from dataset import JointDataset
 from net import NerBertModel
-
-
-def get_slot_labels(data_path):
-    tag_list = [
-        line.rstrip("\n").split(" ")
-        for line in open(
-            os.path.join(data_path, "train", "seq.out"), mode="r", encoding="utf-8"
-        )
-    ]
-
-    slot_labels = list(set(list(chain.from_iterable(tag_list))))
-    slot_labels = sorted(slot_labels, key=lambda x: (x[2:], x[:2]))
-    slot_labels = ["UNK", "PAD"] + slot_labels
-
-    return slot_labels
-
-
-def get_intent_labels(data_path):
-    intent_list = [
-        line.rstrip("\n")
-        for line in open(
-            os.path.join(data_path, "train", "label"), mode="r", encoding="utf-8"
-        )
-    ]
-
-    intent_labels = list(set(intent_list))
-    intent_labels = sorted(intent_labels)
-    intent_labels = ["UNK"] + intent_labels
-
-    return intent_labels
 
 
 def get_dataloader(config, preprocessor):
@@ -46,7 +14,10 @@ def get_dataloader(config, preprocessor):
     val_dataset = JointDataset(config, preprocessor, "dev")
     test_dataset = JointDataset(config, preprocessor, "test")
 
-    train_dataloader = DataLoader(train_dataset, batch_size=config.batch_size)
+    train_sampler = RandomSampler(train_dataset)
+    train_dataloader = DataLoader(
+        train_dataset, batch_size=config.batch_size, sampler=train_sampler
+    )
     val_dataloader = DataLoader(
         val_dataset, batch_size=config.batch_size, drop_last=True
     )
@@ -58,8 +29,6 @@ def get_dataloader(config, preprocessor):
 
 
 def main(config):
-    config.slot_labels = get_slot_labels(config.data_path)
-    config.intent_labels = get_intent_labels(config.data_path)
 
     preprocessor = Preprocessor(config.bert_model, config.max_len)
     train_dataloader, val_dataloader, test_dataloader = get_dataloader(

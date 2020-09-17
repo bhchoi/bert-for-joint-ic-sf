@@ -10,6 +10,9 @@ from seqeval.metrics import f1_score as seqeval_f1_score
 from sklearn.metrics import f1_score as sklearn_f1_score
 from itertools import chain
 
+from utils import get_intent_labels
+from utils import get_slot_labels
+
 
 class NerBertModel(pl.LightningModule):
     def __init__(
@@ -24,17 +27,19 @@ class NerBertModel(pl.LightningModule):
         self.ner_train_dataloader = ner_train_dataloader
         self.ner_val_dataloader = ner_val_dataloader
         self.ner_test_dataloader = ner_test_dataloader
-
         self.ignore_index = torch.nn.CrossEntropyLoss().ignore_index
+        self.intent_labels = get_intent_labels(self.config.data_path)
+        self.slot_labels = get_slot_labels(self.config.data_path)
 
         self.bert_config = BertConfig.from_pretrained(self.config.bert_model)
         self.model = BertModel.from_pretrained(self.config.bert_model)
-        self.dropout = nn.Dropout(self.config.dropout_rate)
-        self.slot_linear = nn.Linear(
-            self.bert_config.hidden_size, len(self.config.slot_labels)
-        )
+        self.intent_dropout = nn.Dropout(self.config.dropout_rate)
         self.intent_linear = nn.Linear(
-            self.bert_config.hidden_size, len(self.config.intent_labels)
+            self.bert_config.hidden_size, len(self.intent_labels)
+        )
+        self.slot_dropout = nn.Dropout(self.config.dropout_rate)
+        self.slot_linear = nn.Linear(
+            self.bert_config.hidden_size, len(self.slot_labels)
         )
 
     def forward(self, input_ids, attention_mask, token_type_ids):
@@ -45,11 +50,11 @@ class NerBertModel(pl.LightningModule):
         )
 
         slot_output = outputs[0]
-        slot_output = self.dropout(slot_output)
+        slot_output = self.slot_dropout(slot_output)
         slot_output = self.slot_linear(slot_output)
 
         intent_output = outputs[1]
-        intent_output = self.dropout(intent_output)
+        intent_output = self.intent_dropout(intent_output)
         intent_output = self.intent_linear(intent_output)
 
         return slot_output, intent_output
@@ -70,7 +75,7 @@ class NerBertModel(pl.LightningModule):
         slot_loss = F.cross_entropy(active_logits, active_labels)
 
         intent_loss = F.cross_entropy(
-            intent_output.view(-1, len(self.config.intent_labels)),
+            intent_output.view(-1, len(self.intent_labels)),
             intent_labels.view(-1),
         )
 
@@ -124,16 +129,17 @@ class NerBertModel(pl.LightningModule):
 
         token_val_slot_acc = torch.tensor(token_val_slot_acc, dtype=torch.float32)
 
-        # pred_intent_labels = torch.argmax(intent_output, dim=1)
-        # print("##pred_intent_labels:", pred_intent_labels.size())
-        # print("##intent_labels:", intent_labels.size())
         intent_loss = F.cross_entropy(
-            intent_output.view(-1, len(self.config.intent_labels)),
+            intent_output.view(-1, len(self.intent_labels)),
             intent_labels.view(-1),
         )
 
-        # intent_acc = (intent_labels == pred_intent_labels).mean()
-        # intent_acc = 0
+        _, pred_intent_labels = torch.max(intent_output, dim=1)
+
+        intent_labels = intent_labels.detach().cpu().numpy()
+        pred_intent_labels = pred_intent_labels.detach().cpu().numpy()
+
+        intent_acc = (intent_labels == pred_intent_labels).mean()
 
         validation_outputs = {
             "val_slot_loss": slot_loss,
@@ -141,7 +147,7 @@ class NerBertModel(pl.LightningModule):
             "val_loss": slot_loss + intent_loss,
             "val_slot_acc": val_slot_acc,
             "token_val_slot_acc": token_val_slot_acc,
-            # "intent_acc": intent_acc,
+            "intent_acc": intent_acc,
         }
 
         return validation_outputs
@@ -154,7 +160,7 @@ class NerBertModel(pl.LightningModule):
         token_val_slot_acc = torch.stack(
             [x["token_val_slot_acc"] for x in outputs]
         ).mean()
-        # intent_acc = torch.stack([x["intent_acc"] for x in outputs]).mean()
+        intent_acc = torch.stack([x["intent_acc"] for x in outputs]).mean()
 
         tensorboard_log = {
             "val_loss": val_loss,
@@ -162,7 +168,7 @@ class NerBertModel(pl.LightningModule):
             "val_intent_loss": val_intent_loss,
             "val_slot_acc": val_slot_acc,
             "token_val_slot_acc": token_val_slot_acc,
-            # "intent_acc": intent_acc,
+            "intent_acc": intent_acc,
         }
 
         return {"val_loss": val_loss, "progress_bar": tensorboard_log}
