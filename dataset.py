@@ -22,7 +22,7 @@ class JointDataset(Dataset):
     def load_data(self):
 
         self.sentence_list = [
-            line.rstrip("\n").split(" ")
+            line.rstrip("\n").split()
             for line in open(
                 os.path.join(self.config.data_path, self.mode, "seq.in"),
                 mode="r",
@@ -30,7 +30,7 @@ class JointDataset(Dataset):
             )
         ]
         self.tag_list = [
-            line.rstrip("\n").split(" ")
+            line.rstrip("\n").split()
             for line in open(
                 os.path.join(self.config.data_path, self.mode, "seq.out"),
                 mode="r",
