@@ -28,18 +28,18 @@ class NerBertModel(pl.LightningModule):
         self.ner_val_dataloader = ner_val_dataloader
         self.ner_test_dataloader = ner_test_dataloader
         self.ignore_index = torch.nn.CrossEntropyLoss().ignore_index
-        self.intent_labels = get_intent_labels(self.config.data_path)
-        self.slot_labels = get_slot_labels(self.config.data_path)
+        self.total_intent_labels = get_intent_labels(self.config.data_path)
+        self.total_slot_labels = get_slot_labels(self.config.data_path)
 
         self.bert_config = BertConfig.from_pretrained(self.config.bert_model)
         self.model = BertModel.from_pretrained(self.config.bert_model)
         self.intent_dropout = nn.Dropout(self.config.dropout_rate)
         self.intent_linear = nn.Linear(
-            self.bert_config.hidden_size, len(self.intent_labels)
+            self.bert_config.hidden_size, len(self.total_intent_labels)
         )
         self.slot_dropout = nn.Dropout(self.config.dropout_rate)
         self.slot_linear = nn.Linear(
-            self.bert_config.hidden_size, len(self.slot_labels)
+            self.bert_config.hidden_size, len(self.total_slot_labels)
         )
 
     def forward(self, input_ids, attention_mask, token_type_ids):
@@ -70,12 +70,12 @@ class NerBertModel(pl.LightningModule):
         )
 
         active_loss = attention_mask.view(-1) == 1
-        active_logits = slot_output.view(-1, len(self.config.slot_labels))[active_loss]
+        active_logits = slot_output.view(-1, len(self.total_slot_labels))[active_loss]
         active_labels = slot_labels.view(-1)[active_loss]
         slot_loss = F.cross_entropy(active_logits, active_labels)
 
         intent_loss = F.cross_entropy(
-            intent_output.view(-1, len(self.intent_labels)),
+            intent_output.view(-1, len(self.total_intent_labels)),
             intent_labels.view(-1),
         )
 
@@ -100,7 +100,7 @@ class NerBertModel(pl.LightningModule):
         )
 
         active_loss = attention_mask.view(-1) == 1
-        active_logits = slot_output.view(-1, len(self.config.slot_labels))[active_loss]
+        active_logits = slot_output.view(-1, len(self.total_slot_labels))[active_loss]
         active_labels = slot_labels.view(-1)[active_loss]
         slot_loss = F.cross_entropy(active_logits, active_labels)
 
@@ -108,7 +108,7 @@ class NerBertModel(pl.LightningModule):
         y_hat = y_hat.detach().cpu().numpy()
         slot_label_ids = slot_labels.detach().cpu().numpy()
 
-        slot_label_map = {i: label for i, label in enumerate(self.config.slot_labels)}
+        slot_label_map = {i: label for i, label in enumerate(self.total_slot_labels)}
         slot_gt_labels = [[] for _ in range(slot_label_ids.shape[0])]
         slot_pred_labels = [[] for _ in range(slot_label_ids.shape[0])]
 
@@ -130,7 +130,7 @@ class NerBertModel(pl.LightningModule):
         token_val_slot_acc = torch.tensor(token_val_slot_acc, dtype=torch.float32)
 
         intent_loss = F.cross_entropy(
-            intent_output.view(-1, len(self.intent_labels)),
+            intent_output.view(-1, len(self.total_intent_labels)),
             intent_labels.view(-1),
         )
 
@@ -184,7 +184,7 @@ class NerBertModel(pl.LightningModule):
         )
 
         active_loss = attention_mask.view(-1) == 1
-        active_logits = outputs.view(-1, len(self.slot_labels))[active_loss]
+        active_logits = outputs.view(-1, len(self.total_slot_labels))[active_loss]
         active_labels = outputs.view(-1)[active_loss]
         loss = F.cross_entropy(active_logits, active_labels)
 
@@ -192,7 +192,7 @@ class NerBertModel(pl.LightningModule):
         y_hat = y_hat.detach().cpu().numpy()
         slot_label_ids = slot_labels.detach().cpu().numpy()
 
-        slot_label_map = {i: label for i, label in enumerate(self.slot_labels)}
+        slot_label_map = {i: label for i, label in enumerate(self.total_slot_labels)}
         slot_gt_labels = [[] for _ in range(slot_label_ids.shape[0])]
         slot_pred_labels = [[] for _ in range(slot_label_ids.shape[0])]
 
