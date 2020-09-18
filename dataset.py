@@ -54,15 +54,12 @@ class JointDataset(Dataset):
 
         intent = self.intent_list[idx]
 
-        try:
-            intent_id = self.intent_labels.index(intent)
-        except ValueError:
-            intent_id = 0
+        intent_id = self.intent_labels.index(intent) if intent in self.intent_labels else self.intent_labels.index("UNK")
 
         tags = [
             self.slot_labels.index(t)
             if t in self.slot_labels
-            else self.preprocessor.tokenizer.unk_token
+            else self.slot_labels.index("UNK")
             for t in self.tag_list[idx]
         ]
 
