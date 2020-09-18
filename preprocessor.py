@@ -1,12 +1,10 @@
 import torch
-from tokenization_kobert import KoBertTokenizer
+from transformers import BertTokenizer
 
 
 class Preprocessor:
     def __init__(self, model_type, max_len):
-        self.tokenizer = KoBertTokenizer.from_pretrained(
-            model_type, do_lower_case=False
-        )
+        self.tokenizer = BertTokenizer.from_pretrained(model_type)
         self.max_len = max_len
         self.ignore_index = torch.nn.CrossEntropyLoss().ignore_index
 
