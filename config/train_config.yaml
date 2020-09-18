@@ -1,9 +1,10 @@
 task: ner
 log_path: logs
-bert_model: monologg/kobert
+bert_model: bert-base-uncased
 data_path: data/atis
-max_len: 16
-batch_size: 128
+max_len: 64
+train_batch_size: 128
+eval_batch_size: 32
 dropout_rate: 0.1
 gpus: 1
 distributed_backend: ddp
