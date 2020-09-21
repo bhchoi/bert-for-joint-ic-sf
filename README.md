@@ -5,7 +5,7 @@ PyTorch Lightning implementation of : [BERT for Joint Intent Classification and 
 * atis
 * snips
 
-# Config
+# Configuration
 * config/train_config.yaml
 ```yaml
 task: atis
