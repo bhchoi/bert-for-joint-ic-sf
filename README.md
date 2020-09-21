@@ -1,5 +1,5 @@
 # BERT for Joint Intent Classification and Slot Filling
-PyTorch Lightning implementation of : [BERT for Joint Intent Classification and Slot Filling](https://arxiv.org/abs/1902.10909){:target="_blank"}
+PyTorch Lightning implementation of : [BERT for Joint Intent Classification and Slot Filling](https://arxiv.org/abs/1902.10909)
 
 # Dataset
 * atis
