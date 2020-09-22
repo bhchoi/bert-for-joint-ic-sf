@@ -1,9 +1,9 @@
-from numpy.lib.function_base import average
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import argparse
 import pytorch_lightning as pl
+import os
 from transformers import BertConfig, BertModel, AdamW
 from torch.utils.data import DataLoader
 from seqeval.metrics import f1_score as seqeval_f1_score
@@ -28,8 +28,12 @@ class NerBertModel(pl.LightningModule):
         self.ner_val_dataloader = ner_val_dataloader
         self.ner_test_dataloader = ner_test_dataloader
         self.ignore_index = torch.nn.CrossEntropyLoss().ignore_index
-        self.total_intent_labels = get_intent_labels(self.config.data_path)
-        self.total_slot_labels = get_slot_labels(self.config.data_path)
+        self.total_intent_labels = get_intent_labels(
+            os.path.join(self.config.data_path, self.config.task)
+        )
+        self.total_slot_labels = get_slot_labels(
+            os.path.join(self.config.data_path, self.config.task)
+        )
 
         self.bert_config = BertConfig.from_pretrained(self.config.bert_model)
         self.model = BertModel.from_pretrained(self.config.bert_model)
@@ -139,16 +143,17 @@ class NerBertModel(pl.LightningModule):
         intent_labels = intent_labels.detach().cpu().numpy()
         pred_intent_labels = pred_intent_labels.detach().cpu().numpy()
 
+        # TODO: cpu
         intent_acc = (intent_labels == pred_intent_labels).mean()
         intent_acc = torch.tensor(intent_acc)
 
         validation_outputs = {
             "val_slot_loss": slot_loss,
             "val_intent_loss": intent_loss,
-            "val_loss": slot_loss + intent_loss,
+            "val_loss": slot_loss,
             "val_slot_acc": val_slot_acc,
             "token_val_slot_acc": token_val_slot_acc,
-            "intent_acc": intent_acc,
+            "val_intent_acc": intent_acc,
         }
 
         return validation_outputs
@@ -161,7 +166,7 @@ class NerBertModel(pl.LightningModule):
         token_val_slot_acc = torch.stack(
             [x["token_val_slot_acc"] for x in outputs]
         ).mean()
-        intent_acc = torch.stack([x["intent_acc"] for x in outputs]).mean()
+        val_intent_acc = torch.stack([x["val_intent_acc"] for x in outputs]).mean()
 
         tensorboard_log = {
             "val_loss": val_loss,
@@ -169,7 +174,7 @@ class NerBertModel(pl.LightningModule):
             "val_intent_loss": val_intent_loss,
             "val_slot_acc": val_slot_acc,
             "token_val_slot_acc": token_val_slot_acc,
-            "intent_acc": intent_acc,
+            "val_intent_acc": val_intent_acc,
         }
 
         return {"val_loss": val_loss, "progress_bar": tensorboard_log}

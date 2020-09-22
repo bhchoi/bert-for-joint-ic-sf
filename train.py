@@ -35,13 +35,13 @@ def main(config):
         config, train_dataloader, val_dataloader, test_dataloader
     )
 
-    logger = TensorBoardLogger(save_dir=config.log_path, version=1, name=config.task)
+    logger = TensorBoardLogger(save_dir=config.log_path, name=config.task)
 
     checkpoint_callback = ModelCheckpoint(
-        filepath="checkpoints/" + config.task + "/{epoch}_{val_acc:3f}",
+        filepath="checkpoints/" + config.task + "/{epoch}_{val_loss:.3f}",
         verbose=True,
-        monitor="val_acc",
-        mode="max",
+        monitor="val_loss",
+        mode="min",
         save_top_k=3,
         prefix="",
     )

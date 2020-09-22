@@ -1,7 +1,7 @@
-task: ner
+task: atis
 log_path: logs
 bert_model: bert-base-uncased
-data_path: data/atis
+data_path: data
 max_len: 64
 train_batch_size: 128
 eval_batch_size: 32

@@ -1,0 +1,5 @@
+torch==1.5.1
+transformers==3.0.2
+seqeval==0.0.12
+scikit-learn==0.23.2
+pytorch-lightning==0.8.5
