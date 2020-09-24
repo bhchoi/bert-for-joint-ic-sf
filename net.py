@@ -1,3 +1,4 @@
+from seqeval.metrics.sequence_labeling import f1_score
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -7,7 +8,9 @@ import os
 from transformers import BertConfig, BertModel, AdamW
 from torch.utils.data import DataLoader
 from seqeval.metrics import f1_score as seqeval_f1_score
+from seqeval.metrics import classification_report
 from sklearn.metrics import f1_score as sklearn_f1_score
+from sklearn import metrics
 from itertools import chain
 
 from utils import get_intent_labels
@@ -183,66 +186,61 @@ class NerBertModel(pl.LightningModule):
 
         input_ids, attention_mask, token_type_ids, slot_labels, intent_labels = batch
 
-        outputs = self(
+        slot_output, intent_output = self(
             input_ids=input_ids,
             attention_mask=attention_mask,
             token_type_ids=token_type_ids,
         )
 
-        active_loss = attention_mask.view(-1) == 1
-        active_logits = outputs.view(-1, len(self.total_slot_labels))[active_loss]
-        active_labels = outputs.view(-1)[active_loss]
-        loss = F.cross_entropy(active_logits, active_labels)
-
-        a, y_hat = torch.max(outputs, dim=2)
+        a, y_hat = torch.max(slot_output, dim=2)
         y_hat = y_hat.detach().cpu().numpy()
         slot_label_ids = slot_labels.detach().cpu().numpy()
 
         slot_label_map = {i: label for i, label in enumerate(self.total_slot_labels)}
-        slot_gt_labels = [[] for _ in range(slot_label_ids.shape[0])]
-        slot_pred_labels = [[] for _ in range(slot_label_ids.shape[0])]
+        gt_slot_labels = [[] for _ in range(slot_label_ids.shape[0])]
+        pred_slot_labels = [[] for _ in range(slot_label_ids.shape[0])]
 
         for i in range(slot_label_ids.shape[0]):
             for j in range(slot_label_ids.shape[1]):
                 if slot_label_ids[i, j] != self.ignore_index:
-                    slot_gt_labels[i].append(slot_label_map[slot_gt_labels[i][j]])
-                    slot_pred_labels[i].append(slot_label_map[y_hat[i][j]])
+                    gt_slot_labels[i].append(slot_label_map[slot_label_ids[i][j]])
+                    pred_slot_labels[i].append(slot_label_map[y_hat[i][j]])
 
-        test_acc = torch.tenfor(
-            seqeval_f1_score(slot_gt_labels, slot_pred_labels), dtype=torch.float32
-        )
-        token_test_acc = sklearn_f1_score(
-            list(chain.from_iterable(slot_gt_labels)),
-            list(chain.from_iterable(slot_pred_labels)),
-            average="micro",
-        )
+        _, pred_intent_labels = torch.max(intent_output, dim=1)
 
-        token_test_acc = torch.tensor(token_test_acc, dtype=torch.float32)
+        gt_intent_labels = intent_labels.detach().cpu().numpy()
+        pred_intent_labels = pred_intent_labels.detach().cpu().numpy()
 
         test_step_outputs = {
-            "test_acc": test_acc,
-            "token_test_acc": token_test_acc,
-            "gt_labels": slot_gt_labels,
-            "pred_labels": slot_pred_labels,
+            "gt_slot_labels": gt_slot_labels,
+            "pred_slot_labels": pred_slot_labels,
+            "gt_intent_labels": gt_intent_labels,
+            "pred_intent_labels": pred_intent_labels,
         }
 
         return test_step_outputs
 
     def test_epoch_end(self, outputs):
-        test_acc = torch.stack([x["test_acc"] for x in outputs]).mean()
-        token_test_acc = torch.stack([x["token_test_acc"] for x in outputs]).mean()
 
-        gt_labels = []
-        pred_labels = []
+        gt_slot_labels = []
+        pred_slot_labels = []
+        gt_intent_labels = []
+        pred_intent_labels = []
+
         for x in outputs:
-            gt_labels.extend(x["gt_labels"])
-            pred_labels.extend(x["pred_labels"])
+            gt_slot_labels.extend(x["gt_slot_labels"])
+            pred_slot_labels.extend(x["pred_slot_labels"])
+            gt_intent_labels.extend(x["gt_intent_labels"])
+            pred_intent_labels.extend(x["pred_intent_labels"])
+
+        slot_report = classification_report(gt_slot_labels, pred_slot_labels)
+        slot_f1_score = f1_score(gt_slot_labels, pred_slot_labels)
+        intent_acc = metrics.accuracy_score(gt_intent_labels, pred_intent_labels)
 
         test_step_outputs = {
-            "test_acc": test_acc,
-            "token_test_acc": token_test_acc,
-            "gt_labels": gt_labels,
-            "pred_labels": pred_labels,
+            "slot_report": slot_report,
+            "intent_acc": intent_acc,
+            "slot_f1_score": slot_f1_score,
         }
 
         return test_step_outputs
